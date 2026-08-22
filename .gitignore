@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+# prompts / planning notes — never publish
+PLAN.md
+PROMPT*.md
+*prompt*
+prompts/
+TODO.md
+NOTES.md
