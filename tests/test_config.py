@@ -38,10 +38,10 @@ def make():
 
 
 needs_list = pytest.mark.skipif(
-    "list" not in getattr(contrib, "FIELD_TYPES", ()),
+    "list" not in getattr(contrib, "CONFIG_FIELD_TYPES", getattr(contrib, "FIELD_TYPES", ())),
     reason="core contrib lacks 'list' in FIELD_TYPES (pre-8.3.0 dev tree)")
 needs_url = pytest.mark.skipif(
-    "url" not in getattr(contrib, "FIELD_TYPES", ()),
+    "url" not in getattr(contrib, "CONFIG_FIELD_TYPES", getattr(contrib, "FIELD_TYPES", ())),
     reason="core contrib lacks 'url' in FIELD_TYPES (pre-8.3.0 dev tree)")
 
 
