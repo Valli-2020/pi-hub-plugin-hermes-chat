@@ -12,6 +12,7 @@
   username and password are kept.
 - Added `pihub-plugin.json` (API v2, no capabilities, min core 8.3.0) and an MIT LICENSE.
 - Removed the leftover `pi_hub_plugins/plugins.json` (the store never extracts it).
+- Connection hardening from the field: reader thread keeps WebSocket pings answered, correlated ping/pong heartbeat, no blind re-send of a prompt on a slow server, frame size caps, TCP keepalive, always mint a fresh ticket on reconnect. Includes the hardening and WebSocket client tests.
 
 ## 0.1.0
 

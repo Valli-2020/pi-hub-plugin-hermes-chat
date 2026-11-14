@@ -172,7 +172,18 @@ class HermesAuth:
         """Build the ws:// URL with a freshly minted ticket, when needed."""
         scheme = "wss" if self.base.startswith("https://") else "ws"
         netloc = self.base.split("://", 1)[1]
-        if self.auth_required():
+        try:
+            need_ticket = self.auth_required()
+        except AuthError:
+            need_ticket = True
+        # auth_required() probes /api/auth/me with the session cookie: on a
+        # RE-connect the cookie is still valid, the probe succeeds, and a
+        # ticket-less URL would be rejected by gated mode with 403. When a
+        # credential pair exists, always mint a fresh ticket instead —
+        # tickets are cheap and single-use by design.
+        if not need_ticket and self.username and self.password:
+            need_ticket = True
+        if need_ticket:
             ticket = urllib.parse.quote(self.ws_ticket())
             return f"{scheme}://{netloc}{path}?ticket={ticket}"
         return f"{scheme}://{netloc}{path}"

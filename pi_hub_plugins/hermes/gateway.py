@@ -45,6 +45,10 @@ class HermesGateway:
         self._rid = 0
         self._connected = False
         self._last_error: Optional[str] = None
+        # Heartbeat liveness: two consecutive unanswered pings → dead.
+        self._hb_misses = 0
+        self._HB_TOKEN = b"pi-hb"
+        self._PONG_WAIT = 5.0
 
     # ── connection ─────────────────────────────────────────────────────
 
@@ -89,17 +93,32 @@ class HermesGateway:
         return self._last_error
 
     def ping(self) -> bool:
-        """Send a WS ping to detect a dead connection. Thread-safe."""
+        """Correlated liveness probe. Thread-safe.
+
+        Sends a WS ping carrying a token and waits for OUR echo, so a
+        sendall that vanishes into a stalled peer no longer counts as
+        healthy (write-only liveness). Two consecutive misses return
+        False and tear the connection down; the keeper then rebuilds and
+        /health reports offline in the meantime.
+        """
         with self._lock:
             if self._conn is None or not self._connected:
                 return False
-            try:
-                self._conn.send("pi", opcode=0x9)
+            self._hb_misses += 1
+            ok = (self._conn.send_ping(self._HB_TOKEN)
+                  and self._conn.await_pong(self._HB_TOKEN,
+                                            timeout=self._PONG_WAIT))
+            if ok:
+                self._hb_misses = 0
                 return True
-            except Exception:
+            if self._hb_misses >= 2:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
                 self._connected = False
-                self._last_error = "heartbeat failed"
-                return False
+                self._last_error = "heartbeat lost"
+            return False
 
     def close(self) -> None:
         with self._lock:
@@ -112,6 +131,19 @@ class HermesGateway:
             self._connected = False
 
     # ── RPC ────────────────────────────────────────────────────────────
+
+    def _conn_is_dead(self) -> bool:
+        """Liveness gate for the timeout-retry path.
+
+        True only when the heartbeat already declared this connection
+        dead (2 consecutive missed pongs) or the socket is gone. A
+        merely slow server keeps its connection and gets no blind
+        re-send of the same request.
+        """
+        with self._lock:
+            if self._conn is None or not self._connected:
+                return True
+        return self._hb_misses >= 2
 
     def _next_rid(self) -> str:
         self._rid += 1
@@ -146,9 +178,17 @@ class HermesGateway:
         """
         res = self._call_once(method, params, timeout, stream, on_delta)
         if not res.get("ok"):
-            stale = ("closed by server" in str(res.get("error"))
-                     or "read failed" in str(res.get("error"))
-                     or "not connected" in str(res.get("error")))
+            err = str(res.get("error"))
+            stale = ("closed by server" in err
+                     or "read failed" in err
+                     or "not connected" in err
+                     # A wedged-but-open socket surfaces as a timeout:
+                     # include it in the retry predicate, but only act
+                     # when the heartbeat has confirmed the connection
+                     # is truly dead — a merely SLOW server must not get
+                     # the same request blindly re-sent (prompt.submit
+                     # would run twice).
+                     or ("timed out after" in err and self._conn_is_dead()))
             if stale:
                 # Retry once on a fresh connection. The plugin's send
                 # handler passes no on_delta callback, so nothing that
@@ -166,13 +206,19 @@ class HermesGateway:
             rid = self._next_rid()
             req = json.dumps({"jsonrpc": "2.0", "id": rid,
                               "method": method, "params": params})
+            conn = self._conn
             try:
-                self._conn.send(req)                      # type: ignore[union-attr]
+                # Drop the push backlog (and any replies from abandoned
+                # calls) so this call never walks stale frames inside
+                # its deadline.
+                conn.purge_pending()
+                conn.send(req)
             except Exception:
                 if not self._connect_locked():
                     return {"ok": False,
                             "error": f"send failed: {self._last_error}"}
                 try:
+                    self._conn.purge_pending()            # type: ignore[union-attr]
                     self._conn.send(req)                  # type: ignore[union-attr]
                 except Exception as e:
                     self._connected = False
