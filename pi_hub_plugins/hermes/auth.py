@@ -39,7 +39,7 @@ def read_env_credentials(path: str = "") -> tuple[str, str]:
     Returns empty strings when the file or keys are absent — callers then
     fall back to an unauthenticated (loopback) attempt.
     """
-    target = path or ENV_PATH
+    target = os.path.expanduser(path) if path else ENV_PATH
     user = pw = ""
     try:
         with open(target, "r", encoding="utf-8", errors="replace") as fh:

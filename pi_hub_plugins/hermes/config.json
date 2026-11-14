@@ -2,5 +2,12 @@
   "hermes_url": "http://127.0.0.1:9119",
   "username": "",
   "password": "",
-  "timeout_seconds": 180
+  "env_path": "~/.hermes/.env",
+  "timeout_seconds": 180,
+  "tab_label": "Hermes",
+  "history_limit": 40,
+  "history_visible": 12,
+  "history_chars": 300,
+  "heartbeat_seconds": 20,
+  "reconnect_max_seconds": 60
 }

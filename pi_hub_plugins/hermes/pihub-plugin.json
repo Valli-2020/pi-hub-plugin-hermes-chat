@@ -1,0 +1,10 @@
+{
+  "name": "hermes",
+  "version": "0.2.0",
+  "description": "Chat with the local Hermes agent — per-user sessions",
+  "min_core_version": "8.3.0",
+  "plugin_api_version": 2,
+  "author": "Valli-2020",
+  "license": "MIT",
+  "capabilities": []
+}
